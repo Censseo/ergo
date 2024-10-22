@@ -1,0 +1,15 @@
+{
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  "features": {
+    "ghcr.io/devcontainers-extra/features/scala-sdkman:2": {
+      "version": "latest",
+      "jdkVersion": "11",
+      "jdkDistro": "open"
+    },
+    "ghcr.io/devcontainers-extra/features/sbt-sdkman:2": {
+      "version": "latest",
+      "jdkVersion": "11",
+      "jdkDistro": "open"
+    }
+  }
+}
