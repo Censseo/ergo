@@ -3,17 +3,34 @@
   "features": {
     "ghcr.io/devcontainers/features/java:1": {
         "version": "11",
-        "jdkDistro": "ms"
+        "jdkDistro": "tem"
     },
     "ghcr.io/devcontainers-extra/features/scala-sdkman:2": {
-      "version": "latest",
+      "version": "2.13.14",
       "jdkVersion": "11",
-      "jdkDistro": "ms"
+      "jdkDistro": "tem"
     },
     "ghcr.io/devcontainers-extra/features/sbt-sdkman:2": {
-      "version": "latest",
+      "version": "1.6.2",
       "jdkVersion": "11",
-      "jdkDistro": "ms"
+      "jdkDistro": "tem"
     }
-  }
+  },
+  "customizations": {
+		"vscode": {
+			"extensions": [
+        "scalameta.metals",
+        "scala-lang.scala",
+        "waderyan.gitblame",
+        "donjayamanne.githistory",
+        "arturock.gitstash",
+        "donjayamanne.git-extension-pack",
+        "Continue.continue",
+        "SonarSource.sonarlint-vscode",
+        "GitHub.copilot",
+        "GitHub.copilot-chat",
+        "ms-vscode.cpptools-extension-pack"
+      ]
+		}
+	}
 }
