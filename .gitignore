@@ -8,6 +8,9 @@ devnet
 .ensime_cache/
 scorex.yaml
 
+# LLM reports on code analysis etc
+llm_generated
+
 # scala build folders
 target
 
@@ -63,6 +66,7 @@ local.conf
 .vscode/
 project/metals.sbt
 null/
+out/
 
 # scala worksheets
 *.worksheet.sc

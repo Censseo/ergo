@@ -7,7 +7,6 @@ import org.ergoplatform.nodeView.state.{BoxHolder, ErgoStateContext}
 import org.ergoplatform.nodeView.wallet.requests.{ExternalSecret, TransactionSigningRequest}
 import org.ergoplatform.nodeView.wallet.{AugWalletTransaction, WalletTransaction}
 import org.ergoplatform.sdk.wallet.secrets.{DhtSecretKey, DlogSecretKey}
-import org.ergoplatform.settings.Constants
 import org.ergoplatform.utils.{BoxUtils, RandomLike, RandomWrapper}
 import org.ergoplatform.sdk.wallet.Constants.MaxAssetsPerBox
 import org.ergoplatform.wallet.interpreter.TransactionHintsBag
@@ -23,6 +22,7 @@ import sigma.ast.ErgoTree
 import sigma.data.ProveDlog
 import sigmastate.eval.Extensions._
 import sigmastate.helpers.TestingHelpers._
+import org.ergoplatform.settings.Constants.TrueTree
 import sigma.eval.Extensions.EvalIterableOps
 
 import scala.collection.mutable
@@ -118,7 +118,7 @@ object ErgoNodeTransactionGenerators extends ScorexLogging {
   def validUnsignedTransactionFromBoxes(boxesToSpend: IndexedSeq[ErgoBox],
                                         rnd: RandomLike = new RandomWrapper,
                                         issueNew: Boolean = true,
-                                        outputsProposition: ErgoTree = Constants.TrueLeaf,
+                                        outputsProposition: ErgoTree = TrueTree,
                                         dataBoxes: IndexedSeq[ErgoBox] = IndexedSeq()): UnsignedErgoTransaction = {
     require(boxesToSpend.nonEmpty, "At least one box is needed to generate a transaction")
 
@@ -190,9 +190,10 @@ object ErgoNodeTransactionGenerators extends ScorexLogging {
       } while (assetsMap.nonEmpty && availableTokenSlots > 0)
     }
 
+    val creationHeight = boxesToSpend.map(_.creationHeight).max
     val newBoxes = outputAmounts.zip(tokenAmounts.toIndexedSeq).map { case (amt, tokens) =>
       val normalizedTokens = tokens.toSeq.map(t => t._1.data.toTokenId -> t._2)
-      testBox(amt, outputsProposition, 0, normalizedTokens)
+      testBox(amt, outputsProposition, creationHeight, normalizedTokens)
     }
     val inputs = boxesToSpend.map(b => Input(b.id, emptyProverResult))
     val dataInputs = dataBoxes.map(b => DataInput(b.id))
@@ -204,7 +205,7 @@ object ErgoNodeTransactionGenerators extends ScorexLogging {
   def validTransactionFromBoxes(boxesToSpend: IndexedSeq[ErgoBox],
                                 rnd: RandomLike = new RandomWrapper,
                                 issueNew: Boolean = true,
-                                outputsProposition: ErgoTree = Constants.TrueLeaf,
+                                outputsProposition: ErgoTree = TrueTree,
                                 stateCtxOpt: Option[ErgoStateContext] = None,
                                 dataBoxes: IndexedSeq[ErgoBox] = IndexedSeq()): ErgoTransaction = {
     val unsignedTx = validUnsignedTransactionFromBoxes(boxesToSpend, rnd, issueNew, outputsProposition, dataBoxes)

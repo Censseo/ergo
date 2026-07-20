@@ -2,10 +2,10 @@ package org.ergoplatform.wallet.transactions
 
 import org.ergoplatform.ErgoBox.TokenId
 import org.ergoplatform._
+import org.ergoplatform.sdk.SecretString
 import org.ergoplatform.sdk.wallet.TokensMap
 import org.ergoplatform.sdk.wallet.secrets.ExtendedSecretKey
 import org.ergoplatform.wallet.boxes.BoxSelector
-import org.ergoplatform.wallet.interface4j.SecretString
 import org.ergoplatform.wallet.mnemonic.Mnemonic
 import org.ergoplatform.wallet.utils.WalletTestHelpers
 import org.scalatest.matchers.should.Matchers
@@ -15,6 +15,7 @@ import sigmastate.eval.Extensions._
 import sigmastate.helpers.TestingHelpers._
 import sigmastate.utils.Extensions._
 import sigmastate.utils.Helpers._
+import sigma.Extensions.ArrayOps
 import sigma.eval.Extensions.EvalIterableOps
 
 import scala.util.{Success, Try}
@@ -124,6 +125,42 @@ class TransactionBuilderSpec extends WalletTestHelpers with Matchers {
     assertExceptionThrown(
       res.getOrThrow,
       t => t.getMessage.contains("createFeeOutput should be defined"))
+  }
+
+  property("paymentTransaction rejects invalid input ids") {
+    val address = P2PKAddress(rootSecret.privateInput.publicImage)
+
+    def build(inputId: String): UnsignedErgoLikeTransaction =
+      TransactionBuilder.paymentTransaction(
+        address,
+        address,
+        minBoxValue,
+        minBoxValue,
+        0,
+        Array(inputId),
+        currentHeight)
+
+    Seq("00", "not-hex").foreach { inputId =>
+      assertExceptionThrown(build(inputId), t => t.isInstanceOf[IllegalArgumentException])
+    }
+  }
+
+  property("multiPaymentTransaction rejects invalid input ids") {
+    val address = P2PKAddress(rootSecret.privateInput.publicImage)
+    val payments = java.util.Collections.singletonList(TransactionBuilder.Payment(address, minBoxValue))
+
+    def build(inputId: String): UnsignedErgoLikeTransaction =
+      TransactionBuilder.multiPaymentTransaction(
+        Array(inputId),
+        minBoxValue,
+        payments,
+        address,
+        0,
+        currentHeight)
+
+    Seq("00", "not-hex").foreach { inputId =>
+      assertExceptionThrown(build(inputId), t => t.isInstanceOf[IllegalArgumentException])
+    }
   }
 
 }

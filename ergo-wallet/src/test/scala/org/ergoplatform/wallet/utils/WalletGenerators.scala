@@ -11,8 +11,9 @@ import org.scalacheck.Arbitrary.arbByte
 import org.scalacheck.{Arbitrary, Gen}
 import scorex.crypto.authds.ADKey
 import scorex.util._
-import sigma.ast._
-import sigma.ast.syntax._
+import sigma.Extensions.ArrayOps
+import sigma.ast.{ByteArrayConstant, ErgoTree, EvaluatedValue, FalseLeaf, SByte, SType, TrueLeaf}
+import sigma.ast.syntax.CollectionConstant
 import sigma.crypto.CryptoFacade.SecretKeyLength
 import sigma.data.ProveDlog
 import sigmastate.eval.Extensions._
@@ -149,15 +150,10 @@ object WalletGenerators {
     }
   }
 
-  def appStatusesGen: Gen[Set[ScanId]] = {
-    if(scala.util.Random.nextBoolean()) {
-      // simulate complex usage scenario
-      Gen.nonEmptyListOf(Gen.posNum[Short]).map(_.map { id: Short => ScanId @@ id }.toSet)
-    } else {
-      // simulate simple payment
-      Set(PaymentsScanId)
-    }
-  }
+  def appStatusesGen: Gen[Set[ScanId]] = Gen.oneOf(
+    Gen.nonEmptyListOf(Gen.posNum[Short]).map(_.map { id: Short => ScanId @@ id }.toSet),
+    Gen.const(Set(PaymentsScanId))
+  )
 
   def trackedBoxGen: Gen[TrackedBox] = for {
     creationTxId <- modIdGen
@@ -172,10 +168,7 @@ object WalletGenerators {
 
 
   def unsignedTxGen(secret: SecretKey): Gen[(IndexedSeq[ErgoBox], UnsignedErgoLikeTransaction)] = {
-    val dlog: Gen[ErgoTree] = Gen.const(
-      ErgoTree.fromProposition(
-
-        secret.privateInput.publicImage.asInstanceOf[ProveDlog].toSigmaPropValue))
+    val dlog: Gen[ErgoTree] = Gen.const(ErgoTree.fromProposition(secret.privateInput.publicImage.asInstanceOf[ProveDlog]))
 
     for {
       ins <- Gen.listOfN(2, ergoBoxGen(dlog))
@@ -185,7 +178,7 @@ object WalletGenerators {
         value,
         ErgoTreePredef.feeProposition(),
         h,
-        Seq.empty[(ErgoBox.TokenId, Long)].toColl,
+        Array.empty[(ErgoBox.TokenId, Long)].toColl,
         Map.empty
       )
       unsignedInputs = ins

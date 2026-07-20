@@ -23,7 +23,8 @@ trait ApiExtraCodecs extends JsonCodecs {
       "globalIndex" -> iEb.globalIndex.asJson,
       "inclusionHeight" -> iEb.inclusionHeight.asJson,
       "address" -> ergoAddressEncoder.toString(getAddress(iEb.box.ergoTree)(ergoAddressEncoder)).asJson,
-      "spentTransactionId" -> iEb.spendingTxIdOpt.asJson
+      "spentTransactionId" -> iEb.spendingTxIdOpt.asJson,
+      "spendingProof" -> iEb.spendingProofOpt.asJson
     ))
   }
 
@@ -111,6 +112,15 @@ trait ApiExtraCodecs extends JsonCodecs {
     for {
       availableManifests <- Decoder.decodeMap[Int, ManifestId].tryDecode(cursor.downField("availableManifests"))
     } yield new SnapshotsInfo(availableManifests)
+  }
+
+  implicit val indexedBlockEncoder: Encoder[IndexedBlock] = { iBlock =>
+    Json.obj(
+      "header"       -> iBlock.header.asJson,
+      "transactions" -> iBlock.transactions.asJson,
+      "height"       -> iBlock.height.asJson,
+      "size"         -> iBlock.size.asJson
+    )
   }
 
 }

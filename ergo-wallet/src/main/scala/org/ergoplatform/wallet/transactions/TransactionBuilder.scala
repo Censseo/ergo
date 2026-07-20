@@ -2,7 +2,7 @@ package org.ergoplatform.wallet.transactions
 
 import org.ergoplatform.ErgoBox.TokenId
 import org.ergoplatform._
-import org.ergoplatform.sdk.wallet.{AssetUtils, TokensMap}
+import org.ergoplatform.sdk.wallet.{AssetUtils, Constants, TokensMap}
 import org.ergoplatform.wallet.boxes.{BoxSelector, DefaultBoxSelector}
 import scorex.crypto.authds.ADKey
 import scorex.util.encode.Base16
@@ -10,7 +10,7 @@ import scorex.util.{ModifierId, bytesToId}
 import sigma.eval.Extensions.EvalIterableOps
 import sigmastate.utils.Extensions._
 import sigma.Coll
-import sigma.Extensions._
+import sigma.Extensions.{ArrayOps, CollBytesOps}
 
 import scala.collection.JavaConverters._
 import scala.util.Try
@@ -47,7 +47,7 @@ object TransactionBuilder {
       feeAmt,
       ErgoTreePredef.feeProposition(),
       currentHeight,
-      Seq.empty[(ErgoBox.TokenId, Long)].toColl,
+      Array.empty[(ErgoBox.TokenId, Long)].toColl,
       Map.empty
     )
     val paymentBoxes =
@@ -56,7 +56,7 @@ object TransactionBuilder {
           transferAmt,
           recipientAddress.script,
           currentHeight,
-          Seq.empty[(ErgoBox.TokenId, Long)].toColl,
+          Array.empty[(ErgoBox.TokenId, Long)].toColl,
           Map.empty
         )
       }.toVector
@@ -69,17 +69,12 @@ object TransactionBuilder {
           changeAmt,
           changeAddress.script,
           currentHeight,
-          Seq.empty[(ErgoBox.TokenId, Long)].toColl,
+          Array.empty[(ErgoBox.TokenId, Long)].toColl,
           Map.empty
         )
         paymentBoxes ++ Vector(feeBox, changeBox)
       }
-    val unsignedInputs = inputIds
-      .flatMap { id =>
-        Base16.decode(id)
-          .map(x => new UnsignedInput(ADKey @@ x))
-          .toOption
-      }.toIndexedSeq
+    val unsignedInputs = unsignedInputsFromIds(inputIds)
 
     new UnsignedErgoLikeTransaction(
       unsignedInputs,
@@ -111,30 +106,24 @@ object TransactionBuilder {
       transferAmt,
       recipientAddress.script,
       currentHeight,
-      Seq.empty[(ErgoBox.TokenId, Long)].toColl,
+      Array.empty[(ErgoBox.TokenId, Long)].toColl,
       Map.empty
     )
     val fee = new ErgoBoxCandidate(
       feeAmt,
       ErgoTreePredef.feeProposition(),
       currentHeight,
-      Seq.empty[(ErgoBox.TokenId, Long)].toColl,
+      Array.empty[(ErgoBox.TokenId, Long)].toColl,
       Map.empty
     )
     val change = new ErgoBoxCandidate(
       changeAmt,
       changeAddress.script,
       currentHeight,
-      Seq.empty[(ErgoBox.TokenId, Long)].toColl,
+      Array.empty[(ErgoBox.TokenId, Long)].toColl,
       Map.empty
     )
-    val unsignedInputs = inputIds
-      .flatMap { id =>
-        Base16.decode(id)
-          .map(x => new UnsignedInput(ADKey @@ x))
-          .toOption
-      }
-      .toIndexedSeq
+    val unsignedInputs = unsignedInputsFromIds(inputIds)
 
     val dataInputs = IndexedSeq.empty
     val outputs = if (changeAmt == 0) {
@@ -161,6 +150,15 @@ object TransactionBuilder {
 
   def tokensMapToColl(tokens: TokensMap): Coll[(TokenId, Long)] =
     tokens.toArray.map {t => t._1.toTokenId -> t._2}.toColl
+
+  private def unsignedInputsFromIds(inputIds: Array[String]): IndexedSeq[UnsignedInput] =
+    inputIds.map { id =>
+      val bytes = Base16.decode(id)
+        .getOrElse(throw new IllegalArgumentException("Input id should be valid hex"))
+      require(bytes.length == Constants.ModifierIdLength,
+        s"Input id should be ${Constants.ModifierIdLength} bytes")
+      new UnsignedInput(ADKey @@ bytes)
+    }.toIndexedSeq
 
   private def validateStatelessChecks(inputs: IndexedSeq[ErgoBox], dataInputs: IndexedSeq[DataInput],
     outputCandidates: Seq[ErgoBoxCandidate]): Unit = {

@@ -12,52 +12,58 @@ import scala.concurrent.duration._
 
 case class LoggingSettings(level: String)
 
-case class RESTApiSettings(bindAddress: InetSocketAddress,
-                           apiKeyHash: Option[String],
-                           corsAllowedOrigin: Option[String],
-                           timeout: FiniteDuration,
-                           publicUrl: Option[URL])
+case class RESTApiSettings(
+  bindAddress: InetSocketAddress,
+  apiKeyHash: Option[String],
+  corsAllowedOrigin: Option[String],
+  timeout: FiniteDuration,
+  publicUrl: Option[URL]
+)
 
-case class NetworkSettings(nodeName: String,
-                           addedMaxDelay: Option[FiniteDuration],
-                           localOnly: Boolean,
-                           knownPeers: Seq[InetSocketAddress],
-                           bindAddress: InetSocketAddress,
-                           maxConnections: Int,
-                           connectionTimeout: FiniteDuration,
-                           upnpEnabled: Boolean,
-                           upnpGatewayTimeout: Option[FiniteDuration],
-                           upnpDiscoverTimeout: Option[FiniteDuration],
-                           declaredAddress: Option[InetSocketAddress],
-                           handshakeTimeout: FiniteDuration,
-                           deliveryTimeout: FiniteDuration,
-                           maxDeliveryChecks: Int,
-                           appVersion: String,
-                           agentName: String,
-                           desiredInvObjects: Int,
-                           syncInterval: FiniteDuration,
-                           syncStatusRefresh: FiniteDuration,
-                           syncIntervalStable: FiniteDuration,
-                           syncStatusRefreshStable: FiniteDuration,
-                           inactiveConnectionDeadline: FiniteDuration,
-                           syncTimeout: Option[FiniteDuration],
-                           controllerTimeout: Option[FiniteDuration],
-                           maxModifiersCacheSize: Int,
-                           magicBytes: Array[Byte],
-                           getPeersInterval: FiniteDuration,
-                           maxPeerSpecObjects: Int,
-                           temporalBanDuration: FiniteDuration,
-                           penaltySafeInterval: FiniteDuration,
-                           penaltyScoreThreshold: Int,
-                           peerEvictionInterval: FiniteDuration,
-                           peerDiscovery: Boolean)
+case class NetworkSettings(
+  nodeName: String,
+  addedMaxDelay: Option[FiniteDuration],
+  allowLocal: Boolean,
+  knownPeers: Seq[InetSocketAddress],
+  bannedPeers: Seq[InetSocketAddress],
+  bindAddress: InetSocketAddress,
+  maxConnections: Int,
+  connectionTimeout: FiniteDuration,
+  upnpEnabled: Boolean,
+  upnpGatewayTimeout: Option[FiniteDuration],
+  upnpDiscoverTimeout: Option[FiniteDuration],
+  declaredAddress: Option[InetSocketAddress],
+  handshakeTimeout: FiniteDuration,
+  deliveryTimeout: FiniteDuration,
+  maxDeliveryChecks: Int,
+  appVersion: String,
+  agentName: String,
+  desiredInvObjects: Int,
+  syncInterval: FiniteDuration,
+  syncStatusRefresh: FiniteDuration,
+  syncIntervalStable: FiniteDuration,
+  syncStatusRefreshStable: FiniteDuration,
+  inactiveConnectionDeadline: FiniteDuration,
+  syncTimeout: Option[FiniteDuration],
+  controllerTimeout: Option[FiniteDuration],
+  maxModifiersCacheSize: Int,
+  magicBytes: Array[Byte],
+  getPeersInterval: FiniteDuration,
+  maxPeerSpecObjects: Int,
+  temporalBanDuration: FiniteDuration,
+  penaltySafeInterval: FiniteDuration,
+  penaltyScoreThreshold: Int,
+  peerEvictionInterval: FiniteDuration,
+  peerDiscovery: Boolean
+)
 
-case class ScorexSettings(dataDir: File,
-                          logDir: File,
-                          logging: LoggingSettings,
-                          network: NetworkSettings,
-                          restApi: RESTApiSettings)
-
+case class ScorexSettings(
+  dataDir: File,
+  logDir: File,
+  logging: LoggingSettings,
+  network: NetworkSettings,
+  restApi: RESTApiSettings
+)
 
 object ScorexSettings extends ScorexLogging with SettingsReaders {
 
@@ -65,14 +71,22 @@ object ScorexSettings extends ScorexLogging with SettingsReaders {
 
   def readConfigFromPath(userConfigPath: Option[String], configPath: String): Config = {
 
-    val maybeConfigFile: Option[File] = userConfigPath.map(filename => new File(filename)).filter(_.exists())
-      .orElse(userConfigPath.flatMap(filename => Option(getClass.getClassLoader.getResource(filename))).
-        map(r => new File(r.toURI)).filter(_.exists()))
+    val maybeConfigFile: Option[File] = userConfigPath
+      .map(filename => new File(filename))
+      .filter(_.exists())
+      .orElse(
+        userConfigPath
+          .flatMap(filename => Option(getClass.getClassLoader.getResource(filename)))
+          .map(r => new File(r.toURI))
+          .filter(_.exists())
+      )
 
     val config = maybeConfigFile match {
       // if no user config is supplied, the library will handle overrides/application/reference automatically
       case None =>
-        log.warn("NO CONFIGURATION FILE WAS PROVIDED. STARTING WITH DEFAULT SETTINGS FOR TESTNET!")
+        log.warn(
+          "NO CONFIGURATION FILE WAS PROVIDED. STARTING WITH DEFAULT SETTINGS FOR TESTNET!"
+        )
         ConfigFactory.load()
       // application config needs to be resolved wrt both system properties *and* user-supplied config.
       case Some(file) =>
@@ -95,8 +109,31 @@ object ScorexSettings extends ScorexLogging with SettingsReaders {
     fromConfig(readConfigFromPath(userConfigPath, configPath))
   }
 
+  private def withLocalOnlyFallback(config: Config): Config = {
+    val allowLocalPath = s"$configPath.network.allowLocal"
+    val localOnlyPath = s"$configPath.network.localOnly"
+
+    if (config.hasPath(localOnlyPath) && !config.hasPath(allowLocalPath)) {
+      log.warn(
+        s"Deprecated config key '$localOnlyPath' detected. " +
+          s"Please migrate to '$allowLocalPath'. " +
+          s"Falling back to '$allowLocalPath = ${config.getBoolean(localOnlyPath)}'."
+      )
+      ConfigFactory
+        .parseString(s"$allowLocalPath = ${config.getBoolean(localOnlyPath)}")
+        .withFallback(config)
+        .resolve()
+    } else {
+      config
+    }
+  }
+
   def fromConfig(config: Config): ScorexSettings = {
-    config.as[ScorexSettings](configPath)
+    val effectiveConfig = withLocalOnlyFallback(config)
+
+    effectiveConfig
+      .as[ScorexSettings](configPath)
       .ensuring(_.network.magicBytes.length == MagicLength)
   }
+
 }

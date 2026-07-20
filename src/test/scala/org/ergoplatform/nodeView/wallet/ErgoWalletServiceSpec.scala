@@ -9,7 +9,9 @@ import org.ergoplatform.nodeView.wallet.WalletScanLogic.ScanResults
 import org.ergoplatform.nodeView.wallet.persistence.{OffChainRegistry, WalletRegistry, WalletStorage}
 import org.ergoplatform.nodeView.wallet.requests.{AssetIssueRequest, PaymentRequest}
 import org.ergoplatform.nodeView.wallet.scanning.{EqualsScanningPredicate, ScanRequest, ScanWalletInteraction}
+import org.ergoplatform.sdk.SecretString
 import org.ergoplatform.sdk.wallet.secrets.{DerivationPath, ExtendedSecretKey}
+import org.ergoplatform.settings.Constants.TrueTree
 import org.ergoplatform.settings.ErgoSettings
 import org.ergoplatform.utils.fixtures.WalletFixture
 import org.ergoplatform.utils.generators.ErgoNodeTransactionGenerators.validErgoTransactionGen
@@ -18,14 +20,14 @@ import org.ergoplatform.wallet.Constants.{PaymentsScanId, ScanId}
 import org.ergoplatform.wallet.boxes.BoxSelector.BoxSelectionResult
 import org.ergoplatform.wallet.boxes.{ErgoBoxSerializer, ReplaceCompactCollectBoxSelector, TrackedBox}
 import org.ergoplatform.wallet.crypto.ErgoSignature
-import org.ergoplatform.wallet.interface4j.SecretString
+import org.ergoplatform.wallet.interpreter.ErgoProvingInterpreter
 import org.ergoplatform.wallet.mnemonic.Mnemonic
 import org.scalacheck.Gen
 import org.scalatest.BeforeAndAfterAll
 import scorex.db.{LDBKVStore, LDBVersionedStore}
 import scorex.util.encode.Base16
-import sigma.ast.{ByteArrayConstant, ErgoTree, EvaluatedValue, FalseLeaf, SType, TrueLeaf}
 import sigma.Extensions.ArrayOps
+import sigma.ast.{ByteArrayConstant, EvaluatedValue, FalseLeaf, SType}
 import sigmastate.helpers.TestingHelpers.testBox
 
 import scala.collection.compat.immutable.ArraySeq
@@ -96,7 +98,7 @@ class ErgoWalletServiceSpec
           ErgoLikeTransaction(IndexedSeq(), IndexedSeq()),
           creationOutIndex = 0,
           None,
-          testBox(1L, ErgoTree.fromProposition(TrueLeaf.toSigmaProp), 0),
+          testBox(1L, TrueTree, 0),
           Set(PaymentsScanId)
         )
       )
@@ -120,7 +122,7 @@ class ErgoWalletServiceSpec
   property("it should generate valid box candidates from payment request") {
     forAll(validErgoTransactionGen) {
       case (ergoBoxes, _) =>
-        val paymentRequest = PaymentRequest(pks.head, 1, Seq.empty, Map.empty)
+        val paymentRequest = PaymentRequest(pks.head, 1, Array.empty, Map.empty)
         val paymentCandidates = requestsToBoxCandidates(Seq(paymentRequest), ergoBoxes.head.id, startHeight, parameters, pks).get
         paymentCandidates shouldBe List(new ErgoBoxCandidate(value = 1, ergoTree = pks.head.script, startHeight))
     }
@@ -172,7 +174,7 @@ class ErgoWalletServiceSpec
             Base16.encode(ErgoBoxSerializer.toBytes(box.box))
           }
 
-          val paymentRequest = PaymentRequest(pks.head, 50000, Seq.empty, Map.empty)
+          val paymentRequest = PaymentRequest(pks.head, 50000, Array.empty, Map.empty)
           val boxSelector = new ReplaceCompactCollectBoxSelector(settings.walletSettings.maxInputs, settings.walletSettings.optimalInputs, None)
 
           val walletService = new ErgoWalletServiceImpl(ergoSettings)
@@ -251,7 +253,7 @@ class ErgoWalletServiceSpec
             .map { box =>
               Base16.encode(ErgoBoxSerializer.toBytes(box))
             }
-        val paymentRequest = PaymentRequest(pks.head, 50000, Seq.empty, Map.empty)
+        val paymentRequest = PaymentRequest(pks.head, 50000, Array.empty, Map.empty)
         val boxSelector = new ReplaceCompactCollectBoxSelector(settings.walletSettings.maxInputs, settings.walletSettings.optimalInputs, None)
 
         val (tx, inputs, dataInputs) = generateUnsignedTransaction(wState, boxSelector, Seq(paymentRequest), inputsRaw = encodedBoxes, dataInputsRaw = Seq.empty).get
@@ -346,4 +348,89 @@ class ErgoWalletServiceSpec
       }
     }
   }
+
+  property("key derivation after init wallet") {
+    withVersionedStore(2) { versionedStore =>
+      withStore { store =>
+        val wpass = SecretString.create("y")
+        val prover = ErgoProvingInterpreter(defaultRootSecret, parameters)
+        val walletState = ErgoWalletState(
+          new WalletStorage(store, settings),
+          secretStorageOpt = Option.empty,
+          new WalletRegistry(versionedStore)(settings.walletSettings),
+          OffChainRegistry.empty,
+          outputsFilter = Option.empty,
+          WalletVars(Some(prover), Seq.empty, None),
+          stateReaderOpt = Option.empty,
+          mempoolReaderOpt = None,
+          utxoStateReaderOpt = Option.empty,
+          parameters,
+          maxInputsToUse = 1000,
+          rescanInProgress = false
+        )
+        val s = settings.copy(nodeSettings = settings.nodeSettings.copy(blocksToKeep = -1))
+        val walletService = new ErgoWalletServiceImpl(s)
+        val ws = walletService.initWallet(
+          walletState,
+          s,
+          walletPass = wpass,
+          None
+        ).get._2
+
+        ws.secretStorageOpt.get.unlock(wpass)
+        ws.walletVars.trackedPubKeys.size shouldBe 1
+        val uws = ws
+
+        val uws2 = walletService.deriveNextKey(uws, usePreEip3Derivation = true).get._2
+        uws2.walletVars.trackedPubKeys.size shouldBe 2
+
+        val uws3 = walletService.deriveNextKey(uws2, usePreEip3Derivation = false).get._2
+        uws3.walletVars.trackedPubKeys.size shouldBe 3
+      }
+    }
+  }
+
+  property("key derivation after restoring wallet") {
+    withVersionedStore(2) { versionedStore =>
+      withStore { store =>
+        val wpass = SecretString.create("y")
+        val prover = ErgoProvingInterpreter(defaultRootSecret, parameters)
+        val walletState = ErgoWalletState(
+          new WalletStorage(store, settings),
+          secretStorageOpt = Option.empty,
+          new WalletRegistry(versionedStore)(settings.walletSettings),
+          OffChainRegistry.empty,
+          outputsFilter = Option.empty,
+          WalletVars(Some(prover), Seq.empty, None),
+          stateReaderOpt = Option.empty,
+          mempoolReaderOpt = None,
+          utxoStateReaderOpt = Option.empty,
+          parameters,
+          maxInputsToUse = 1000,
+          rescanInProgress = false
+        )
+        val s = settings.copy(nodeSettings = settings.nodeSettings.copy(blocksToKeep = -1))
+        val walletService = new ErgoWalletServiceImpl(s)
+        val ws = walletService.restoreWallet(
+          walletState,
+          s,
+          mnemonic = SecretString.create("x"),
+          mnemonicPassOpt = None,
+          walletPass = wpass,
+          usePre1627KeyDerivation = false
+        ).get
+
+        ws.secretStorageOpt.get.unlock(wpass)
+        ws.walletVars.trackedPubKeys.size shouldBe 1
+        val uws = ws
+
+        val uws2 = walletService.deriveNextKey(uws, false).get._2
+        uws2.walletVars.trackedPubKeys.size shouldBe 2
+
+        val uws3 = walletService.deriveNextKey(uws2, false).get._2
+        uws3.walletVars.trackedPubKeys.size shouldBe 3
+      }
+    }
+  }
+
 }

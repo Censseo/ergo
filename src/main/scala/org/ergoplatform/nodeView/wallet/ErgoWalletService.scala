@@ -11,20 +11,20 @@ import org.ergoplatform.nodeView.wallet.models.{ChangeBox, CollectedBoxes}
 import org.ergoplatform.nodeView.wallet.persistence.{WalletRegistry, WalletStorage}
 import org.ergoplatform.nodeView.wallet.requests.{ExternalSecret, TransactionGenerationRequest}
 import org.ergoplatform.nodeView.wallet.scanning.{Scan, ScanRequest}
+import org.ergoplatform.sdk.SecretString
 import org.ergoplatform.sdk.wallet.secrets.DerivationPath
 import org.ergoplatform.settings.{ErgoSettings, Parameters}
 import org.ergoplatform.wallet.Constants.ScanId
 import org.ergoplatform.wallet.boxes.{BoxSelector, TrackedBox}
-import org.ergoplatform.wallet.interface4j.SecretString
 import org.ergoplatform.wallet.interpreter.{ErgoProvingInterpreter, TransactionHintsBag}
 import org.ergoplatform.wallet.mnemonic.Mnemonic
 import org.ergoplatform.wallet.secrets.JsonSecretStorage
 import org.ergoplatform.wallet.settings.SecretStorageSettings
 import org.ergoplatform.wallet.utils.FileUtils
 import scorex.util.ModifierId
-import sigma.data.SigmaBoolean
 import sigmastate.crypto.DLogProtocol.DLogProverInput
 import sigma.Extensions.CollBytesOps
+import sigma.data.SigmaBoolean
 
 import java.io.FileNotFoundException
 import scala.collection.compat.immutable.ArraySeq
@@ -317,7 +317,7 @@ class ErgoWalletServiceImpl(override val ergoSettings: ErgoSettings) extends Erg
             // remove old wallet state, see https://github.com/ergoplatform/ergo/issues/1313
             recreateRegistry(state, settings).flatMap { stateV1 =>
               recreateStorage(stateV1, settings).map { stateV2 =>
-                mnemonic -> stateV2.copy(secretStorageOpt = Some(newSecretStorage))
+                mnemonic -> stateV2.copy(secretStorageOpt = Some(newSecretStorage), walletVars = stateV2.walletVars.copy(stateCacheProvided = stateV2.walletVars.stateCacheOpt)(settings))
               }
             }
           }
@@ -332,20 +332,21 @@ class ErgoWalletServiceImpl(override val ergoSettings: ErgoSettings) extends Erg
                     mnemonic: SecretString,
                     mnemonicPassOpt: Option[SecretString],
                     walletPass: SecretString,
-                    usePre1627KeyDerivation: Boolean): Try[ErgoWalletState] =
-    if (settings.nodeSettings.isFullBlocksPruned)
+                    usePre1627KeyDerivation: Boolean): Try[ErgoWalletState] = {
+    if (settings.nodeSettings.isFullBlocksPruned) {
       Failure(new IllegalArgumentException("Unable to restore wallet when pruning is enabled"))
-    else
+    } else {
       Try(JsonSecretStorage.restore(mnemonic, mnemonicPassOpt, walletPass, settings.walletSettings.secretStorage, usePre1627KeyDerivation))
         .flatMap { secretStorage =>
           // remove old wallet state, see https://github.com/ergoplatform/ergo/issues/1313
           recreateRegistry(state, settings).flatMap { stateV1 =>
             recreateStorage(stateV1, settings).map { stateV2 =>
-              stateV2.copy(secretStorageOpt = Some(secretStorage))
+              stateV2.copy(secretStorageOpt = Some(secretStorage), walletVars = stateV2.walletVars.copy(stateCacheProvided = stateV2.walletVars.stateCacheOpt)(settings))
             }
           }
         }
-
+    }
+  }
 
   override def unlockWallet(state: ErgoWalletState,
                    walletPass: SecretString,
